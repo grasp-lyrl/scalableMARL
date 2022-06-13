@@ -34,14 +34,14 @@ setTrackingEnvkGreedy : Double Integrator Target model with KF belief tracker
 
 """
 
-class setTrackingEnvkGreedy(maTrackingBase):
+class setTrackingEnvModel(maTrackingBase):
 
     def __init__(self, num_agents=1, num_targets=2, map_name='empty', 
                         is_training=True, known_noise=True, **kwargs):
         super().__init__(num_agents=num_agents, num_targets=num_targets,
                         map_name=map_name, is_training=is_training)
 
-        self.id = 'setTracking-vkGreedy'
+        self.id = 'setTracking-model'
         ###=======================================================###
         # Assign agents to closest k targets, if less targets than k, consider all targets
         self.k = 4
@@ -57,8 +57,8 @@ class setTrackingEnvkGreedy(maTrackingBase):
         self.limit['target'] = [np.concatenate((self.MAP.mapmin,[-METADATA['target_vel_limit'], -METADATA['target_vel_limit']])),
                                 np.concatenate((self.MAP.mapmax, [METADATA['target_vel_limit'], METADATA['target_vel_limit']]))]
         rel_vel_limit = METADATA['target_vel_limit'] + METADATA['action_v'][0] # Maximum relative speed
-        self.limit['state'] = [np.array(([0.0, -np.pi, -rel_vel_limit, -10*np.pi, -50.0, 0.0])),
-                               np.array(([600.0, np.pi, rel_vel_limit, 10*np.pi, 50.0, 2.0]))]
+        self.limit['state'] = [np.array(([0.0, -np.pi, -rel_vel_limit, -10*np.pi, -50.0, 0.0, 0.0, -np.pi ])),
+                               np.array(([600.0, np.pi, rel_vel_limit, 10*np.pi, 50.0, 2.0, self.sensor_r, np.pi]))]
         self.observation_space = spaces.Box(self.limit['state'][0], self.limit['state'][1], dtype=np.float32)
         self.targetA = np.concatenate((np.concatenate((np.eye(2), self.sampling_period*np.eye(2)), axis=1), 
                                         [[0,0,1,0],[0,0,0,1]]))
@@ -115,10 +115,11 @@ class setTrackingEnvkGreedy(maTrackingBase):
             self.nb_agents = kwargs['nb_agents']
             self.nb_targets = kwargs['nb_targets']
         except:
-            self.nb_agents = np.random.randint(1, self.num_agents)
-            self.nb_targets = np.random.randint(1, self.num_targets)
+            self.nb_agents = np.random.random_integers(1, self.num_agents)
+            self.nb_targets = np.random.random_integers(1, self.num_targets)
         obs_dict = {}
-        init_pose = self.get_init_pose(**kwargs)
+        # init_pose = self.get_init_pose(**kwargs)
+        
         # Initialize agents
         for ii in range(self.nb_agents):
             self.agents[ii].reset(init_pose['agents'][ii])
@@ -137,7 +138,7 @@ class setTrackingEnvkGreedy(maTrackingBase):
                                             xy_base=self.agents[kk].state[:2], 
                                             theta_base=self.agents[kk].state[2])
                 logdetcov = np.log(LA.det(self.belief_targets[jj].cov))
-                obs_dict[self.agents[kk].agent_id].append([r, alpha, 0.0, 0.0, logdetcov, 0.0])
+                obs_dict[self.agents[kk].agent_id].append([r, alpha, 0.0, 0.0, logdetcov, 0.0, self.sensor_r, np.pi])
 
         if self.nb_targets > self.k:
             for agent_id in obs_dict:
@@ -158,7 +159,7 @@ class setTrackingEnvkGreedy(maTrackingBase):
 
         # Targets move (t -> t+1)
         for n in range(self.nb_targets):
-            self.targets[n].update() 
+            # self.targets[n].update() 
             self.belief_targets[n].predict() # Belief state at t+1
         # Agents move (t -> t+1) and observe the targets
         for ii, agent_id in enumerate(action_dict):
@@ -198,7 +199,7 @@ class setTrackingEnvkGreedy(maTrackingBase):
                                         self.agents[ii].state[:2], self.agents[ii].state[-1],
                                         action_vw[0], action_vw[1])
                 obs_dict[agent_id].append([r_b, alpha_b, r_dot_b, alpha_dot_b,
-                                        np.log(LA.det(self.belief_targets[jj].cov)), float(obs)])
+                                        np.log(LA.det(self.belief_targets[jj].cov)), float(obs), self.sensor_r, np.pi])
         # Assign agents to closest k targets, if less targets than k, consider all targets
         if self.nb_targets > self.k:
             for agent_id in obs_dict:
